@@ -1,47 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PaddleReady</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=SF+Pro+Display:wght@400;500;600&amp;display=swap');
+        
+        :root {
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        
+        body {
+            font-family: var(--font-sans);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .section-header {
+            font-size: 28px;
+            line-height: 1.1;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+        
+        .metric-value {
+            font-size: 42px;
+            line-height: 1;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .metric-label {
+            font-size: 15px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .info-row {
+            padding-top: 14px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .clean-card {
+            background: white;
+            border-radius: 16px;
+        }
+        
+        .map-container {
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+        }
+        
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        }
+        
+        .metric {
+            transition: all 0.1s ease;
+        }
+        
+        .location-name {
+            font-size: 32px;
+            line-height: 1.05;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+        
+        .subtle-divider {
+            border-color: #f1f5f9;
+        }
+        
+        .data-source {
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        
+        .nav-location {
+            max-width: 260px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .section {
+            scroll-margin-top: 80px;
+        }
+        
+        .big-number {
+            font-size: 52px;
+            line-height: 0.95;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+        }
+    </style>
+</head>
+<body class="bg-[#F8F9FA] text-[#111827]">
+    <!-- Top Navigation -->
+    <nav class="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-b border-gray-100 z-50">
+        <div class="max-w-3xl mx-auto px-5 h-16 flex items-center justify-between">
+            <!-- Logo -->
+            <div class="flex items-center gap-x-2.5">
+                <div class="w-9 h-9 bg-[#0F172A] rounded-2xl flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div>
+                    <span class="font-semibold text-2xl tracking-tighter">PaddleReady</span>
+                </div>
+            </div>
 
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PaddleReady Vision Prototype</title>
-<style>
-body{margin:0;font-family:Inter,Arial;background:#eef2f5;color:#222}
-header{position:sticky;top:0;background:#0a5ea8;color:#fff;padding:16px;font-size:24px}
-.search{display:flex;gap:8px;padding:12px;background:white}
-input{flex:1;padding:12px;border-radius:10px;border:1px solid #bbb}
-button{padding:12px 16px;border-radius:10px;background:#0a5ea8;color:#fff;border:0}
-#map{height:45vh;background:linear-gradient(135deg,#88c7ff,#a7e2c4);display:flex;align-items:center;justify-content:center;font-size:28px}
-.sheet{margin-top:-20px;background:#fff;border-radius:24px 24px 0 0;padding:18px}
-.score{display:flex;justify-content:space-between;align-items:center}
-.big{font-size:64px;color:#15803d}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.card{background:#f6f8fb;border-radius:16px;padding:14px}
-.timeline{display:flex;overflow:auto;gap:10px}
-.hour{min-width:72px;background:#dcecff;padding:8px;border-radius:10px;text-align:center}
-.bottom{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;justify-content:space-around;padding:12px;border-top:1px solid #ccc}
-</style></head><body>
-<header>PaddleReady • England Prototype</header>
-<div class="search"><input placeholder="Search river, lake, beach or postcode"><button>Check Here</button></div>
-<div id="map">🗺 Full Screen Interactive Map (Prototype)</div>
-<div class="sheet">
-<div class="score"><div><h2>Richmond Riverside</h2><div>Best window: 08:00–11:00</div></div><div class="big">83</div></div>
-<h3>🟢 READY</h3>
-<p>Good wind, normal river level, no active sewage alert, parking nearby.</p>
-<div class="grid">
-<div class="card"><h3>🌬 Wind</h3><b>7 mph NW</b><p>Gust 11 mph</p></div>
-<div class="card"><h3>🌧 Rain</h3><b>0%</b><p>Next 3 hrs dry</p></div>
-<div class="card"><h3>🌊 River</h3><b>Normal</b><p>Moderate flow</p></div>
-<div class="card"><h3>🚨 Water Quality</h3><b>No discharge</b><p>Last update 1h ago</p></div>
-<div class="card"><h3>🚗 Parking</h3><b>220m</b><p>3 min walk</p></div>
-<div class="card"><h3>🌅 Sun</h3><b>20:56</b><p>Sunset</p></div>
-<div class="card"><h3>🌊 Tide</h3><b>N/A</b><p>River location</p></div>
-<div class="card"><h3>⚠ Safety</h3><p>Cold water. Wear PFD.</p></div>
-</div>
-<h2>Hourly Forecast</h2>
-<div class="timeline">
-<div class="hour">08:00<br>6 mph</div><div class="hour">09:00<br>7 mph</div><div class="hour">10:00<br>8 mph</div><div class="hour">11:00<br>9 mph</div><div class="hour">12:00<br>11 mph</div><div class="hour">13:00<br>13 mph</div><div class="hour">14:00<br>14 mph</div><div class="hour">15:00<br>15 mph</div><div class="hour">16:00<br>14 mph</div><div class="hour">17:00<br>12 mph</div><div class="hour">18:00<br>10 mph</div><div class="hour">19:00<br>8 mph</div></div><h2>Nearby</h2><div class='grid'><div class='card'><b>Kingston</b><p>Ready Score 78</p></div><div class='card'><b>Kew</b><p>Ready Score 73</p></div><div class='card'><b>Putney</b><p>Ready Score 76</p></div><div class='card'><b>Hampton</b><p>Ready Score 77</p></div></div>
-<h2>Community Reports (Mock)</h2>
-<div class="card">★★★★★ Water clean, light wind.</div>
-<div class="card">★★★★☆ Parking busy after 10am.</div>
-<h2>Disclaimer</h2>
-<p>This prototype provides environmental information to support planning. Users remain responsible for assessing conditions and making safe decisions.</p>
-</div>
-<div class="bottom"><div>🏠Home</div><div>🗺Map</div><div>⭐Saved</div><div>📈Forecast</div><div>⚙Settings</div></div>
-</body></html>
+            <!-- Location in header -->
+            <button onclick="openSearchModal()" 
+                    class="flex items-center gap-x-2 px-4 py-2 rounded-3xl hover:bg-gray-100 active:bg-gray-200 transition-colors border border-gray-200">
+                <div class="flex items-center gap-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314-11.314z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span id="header-location" class="font-medium text-sm text-gray-700 nav-location">Richmond upon Thames</span>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+
+            <!-- Use my location -->
+            <button onclick="useMyLocation()" 
+                    class="flex items-center justify-center w-10 h-10 rounded-3xl hover:bg-gray-100 active:bg-gray-200 transition-colors border border-gray-200"
+                    title="Use my location">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314-11.314z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <div class="pt-16 max-w-3xl mx-auto">
+        
+        <!-- Map -->
+        <div class="px-5 pt-5 pb-3">
+            <div id="map" class="map-container w-full h-[280px] shadow-sm border border-gray-100"></div>
+            <div class="flex justify-between items-center px-1 mt-1.5">
+                <div class="text-[10px] text-gray-400 tracking-wide">MAP • OPENSTREETMAP</div>
+                <button onclick="refreshData()" 
+                        class="flex items-center gap-x-1 text-xs text-gray-500 hover:text-gray-700 px-3 py-1 rounded-xl hover:bg-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.058 11H1M12 3v2m0 16v2m9-9H15m-6 0a8.002 8.002 0 01-3.356-2" />
+                    </svg>
+                    <span class="text-xs font-medium">Refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Location Header -->
+        <div class="px-5 pb-2">
+            <div class="flex items-end justify-between">
+                <div>
+                    <h1 id="location-name" class="location-name tracking-tighter">Richmond upon Thames</h1>
+                    <p id="location-subtitle" class="text-lg text-gray-500 font-medium">London, United Kingdom</p>
+                </div>
+                <div class="text-right">
+                    <div class="inline-flex items-center gap-x-1.5 bg-white border border-gray-200 rounded-3xl px-3 py-1">
+                        <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                        <span id="updated-time" class="text-xs font-medium text-gray-500">Updated just now</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="px-5 pb-12 space-y-9">
+            
+            <!-- WEATHER -->
+            <section id="weather-section" class="section">
+                <div class="flex items-center gap-x-3 mb-4 px-1">
+                    <div class="w-8 h-8 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
+                        </svg>
+                    </div>
+                    <h2 class="section-header tracking-tighter">Weather</h2>
+                </div>
+                
+                <div class="bg-white rounded-3xl border border-gray-100 p-6 space-y-1">
+                    <!-- Temperature -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 01-9 9 9 9 0 01-9-9 9 9 0 019-9 9 9 0 019 9z" />
+                            </svg>
+                            <span class="metric-label">Temperature</span>
+                        </div>
+                        <div class="flex items-baseline gap-x-1">
+                            <span id="weather-temp" class="big-number tabular-nums">17</span>
+                            <span class="text-3xl font-medium text-gray-400">°C</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Wind -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7-7 7m-4-7l7 7-7 7" />
+                            </svg>
+                            <span class="metric-label">Wind</span>
+                        </div>
+                        <div class="text-right">
+                            <span id="weather-wind" class="text-3xl font-semibold tabular-nums">14</span>
+                            <span class="text-xl text-gray-400">km/h</span>
+                            <span id="weather-wind-dir" class="ml-1.5 text-sm font-medium text-gray-500">SW</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Gust -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <span class="metric-label">Gust</span>
+                        </div>
+                        <div>
+                            <span id="weather-gust" class="text-3xl font-semibold tabular-nums">22</span>
+                            <span class="text-xl text-gray-400">km/h</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Rain -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                            </svg>
+                            <span class="metric-label">Rain</span>
+                        </div>
+                        <div class="text-right">
+                            <span id="weather-rain" class="text-3xl font-semibold tabular-nums">40</span>
+                            <span class="text-xl text-gray-400">%</span>
+                            <div id="weather-rain-desc" class="text-xs text-gray-500 -mt-0.5">light showers possible</div>
+                        </div>
+                    </div>
+                    
+                    <!-- UV -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
+                            </svg>
+                            <span class="metric-label">UV Index</span>
+                        </div>
+                        <div>
+                            <span id="weather-uv" class="text-3xl font-semibold tabular-nums">3</span>
+                            <span class="ml-2 text-sm font-medium text-gray-500">Moderate</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-1 mt-1.5">
+                    <span class="data-source">Source: Open-Meteo</span>
+                </div>
+            </section>
+
+            <!-- WATER -->
+            <section id="water-section" class="section">
+                <div class="flex items-center gap-x-3 mb-4 px-1">
+                    <div class="w-8 h-8 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 01-3.86.155l-.298-.149a6 6 0 01-3.86-.155l-2.387.477a2 2 0 00-1.022.547m13.5-9.5a2 2 0 01-1.022.547l-2.387.477a6 6 0 01-3.86-.155l-.298.149a6 6 0 01-3.86.155l-2.387-.477a2 2 0 01-1.022-.547" />
+                        </svg>
+                    </div>
+                    <h2 class="section-header tracking-tighter">Water</h2>
+                </div>
+                
+                <div class="bg-white rounded-3xl border border-gray-100 p-6 space-y-1">
+                    <!-- River Level -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <span class="text-blue-600">↕︎</span>
+                            <span class="metric-label">River Level</span>
+                        </div>
+                        <div class="text-right">
+                            <span id="water-level" class="text-3xl font-semibold tabular-nums">3.1</span>
+                            <span class="text-xl text-gray-400">m</span>
+                            <span id="water-level-trend" class="ml-1.5 text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">rising slowly</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Flow -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7-7 7m-4-7l7 7-7 7" />
+                            </svg>
+                            <span class="metric-label">River Flow</span>
+                        </div>
+                        <div>
+                            <span id="water-flow" class="text-3xl font-semibold tabular-nums">62</span>
+                            <span class="text-xl text-gray-400">m³/s</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Water Quality -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 01-9 9 9 9 0 01-9-9 9 9 0 019-9 9 9 0 019 9z" />
+                            </svg>
+                            <span class="metric-label">Water Quality</span>
+                        </div>
+                        <div class="text-right">
+                            <span id="water-quality" class="text-2xl font-semibold">Excellent</span>
+                            <div class="text-xs text-gray-500">Last checked 2h ago</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Water Temperature -->
+                    <div class="info-row flex items-baseline justify-between">
+                        <div class="flex items-center gap-x-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 01-9 9 9 9 0 01-9-9 9 9 0 019-9 9 9 0 019 9z" />
+                            </svg>
+                            <span class="metric-label">Water Temperature</span>
+                        </div>
+                        <div>
+                            <span id="water-temp" class="text-3xl font-semibold tabular-nums">13</span>
+                            <span class="text-xl text-gray-400">°C</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-1 mt-1.5">
+                    <span class="data-source">Source: Environment Agency</span>
+                </div>
+            </section>
+
+            <!-- ACCESS -->
+            <section id="access-section" class="section">
+                <div class="flex items-center gap-x-3 mb-4 px-1">
+                    <div class="w-8 h-8 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314-11.314z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                    <h2 class="section-header tracking-tighter">Access</h2>
+                </div>
+                
+                <div class="bg-white rounded-3xl border border-gray-100 p-6 space-y-5">
+                    <!-- Parking -->
+                    <div>
+                        <div class="flex items-center gap-x-3 mb-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2 2 2 0 012 2v2m0 0h6a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V9" />
+                            </svg>
+                            <span class="font-semibold text-lg">Parking</span>
+                        </div>
+                        <p id="access-parking" class="text-[15px] leading-snug text-gray-600 pl-8">Richmond Riverside Car Park • 180 spaces • 4 min walk to launch</p>
+                    </div>
+                    
+                    <!-- Launch Point -->
+                    <div>
+                        <div class="flex items-center gap-x-3 mb-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1v-5m0 0l3 3m-3-3l3-3m7 3v10a1 1 0 01-1 1v-5" />
+                            </svg>
+                            <span class="font-semibold text-lg">Launch Point</span>
+                        </div>
+                        <p id="access-launch" class="text-[15px] leading-snug text-gray-600 pl-8">Public slipway at Richmond Bridge • Accessible at current tide • Concrete ramp</p>
+                    </div>
+                    
+                    <!-- Toilets -->
+                    <div>
+                        <div class="flex items-center gap-x-3 mb-1.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 01-2-2H7a2 2 0 01-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1" />
+                            </svg>
+                            <span class="font-semibold text-lg">Toilets</span>
+                        </div>
+                        <p id="access-toilets" class="text-[15px] leading-snug text-gray-600 pl-8">Public toilets at Richmond Bridge • 3 min walk • Open 24h</p>
+                    </div>
+                </div>
+                <div class="px-1 mt-1.5">
+                    <span class="data-source">Source: OpenStreetMap</span>
+                </div>
+            </section>
+
+            <!-- Bottom note -->
+            <div class="px-1 pt-4">
+                <div class="text-center">
+                    <p class="text-xs text-gray-400 max-w-[260px] mx-auto leading-relaxed">
+                        Information only. Always verify conditions yourself before heading to the water.
+                    </p>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- Search Modal -->
+    <div id="search-modal" onclick="if (event.target.id === 'search-modal') closeSearchModal()" 
+         class="hidden fixed inset-0 bg-black/40 z-[60] flex items-end md:items-center justify-center">
+        <div onclick="event.stopImmediatePropagation()" 
+             class="bg-white w-full md:w-[440px] md:rounded-3xl rounded-t-3xl p-6 md:m-4 shadow-xl">
+            
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between mb-5">
+                <div>
+                    <h3 class="font-semibold text-2xl tracking-tight">Where are you going?</h3>
+                    <p class="text-sm text-gray-500">Search any location</p>
+                </div>
+                <button onclick="closeSearchModal()" class="text-gray-400 hover:text-gray-600 p-2 -mr-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6h12v12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Search Input -->
+            <div class="relative mb-4">
+                <input id="search-input" type="text" 
+                       class="w-full bg-gray-100 border-none rounded-3xl py-4 pl-12 pr-5 text-lg placeholder:text-gray-400 focus:outline-none focus:ring-0"
+                       placeholder="Search location or postcode..."
+                       onkeyup="filterSpots()">
+                <div class="absolute left-5 top-4.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 01-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Suggestions -->
+            <div class="text-xs font-medium text-gray-400 px-1 mb-2">SUGGESTED LOCATIONS</div>
+            <div id="spot-list" class="max-h-[280px] overflow-y-auto space-y-1 pr-1">
+                <!-- Populated by JS -->
+            </div>
+            
+            <div class="pt-4 text-[10px] text-center text-gray-400">
+                Supports any location worldwide
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind config
+        function initTailwind() {
+            document.documentElement.style.setProperty('--accent', '#0F172A');
+            
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            'sans': ['Inter', 'system-ui', 'sans-serif']
+                        }
+                    }
+                }
+            };
+        }
+        
+        // Demo locations data
+        const locationsData = {
+            richmond: {
+                id: 'richmond',
+                name: 'Richmond upon Thames',
+                subtitle: 'London, United Kingdom',
+                lat: 51.461,
+                lng: -0.305,
+                type: 'river',
+                weather: {
+                    temp: 17,
+                    wind: 14,
+                    windDir: 'SW',
+                    gust: 22,
+                    rain: 40,
+                    rainDesc: 'light showers possible',
+                    uv: 3
+                },
+                water: {
+                    level: 3.1,
+                    levelTrend: 'rising slowly',
+                    flow: 62,
+                    quality: 'Excellent',
+                    temp: 13
+                },
+                access: {
+                    parking: 'Richmond Riverside Car Park • 180 spaces • 4 min walk to launch',
+                    launch: 'Public slipway at Richmond Bridge • Accessible at current tide • Concrete ramp',
+                    toilets: 'Public toilets at Richmond Bridge • 3 min walk • Open 24h'
+                }
+            },
+            windermere: {
+                id: 'windermere',
+                name: 'Windermere',
+                subtitle: 'Cumbria, United Kingdom',
+                lat: 54.380,
+                lng: -2.935,
+                type: 'lake',
+                weather: {
+                    temp: 15,
+                    wind: 8,
+                    windDir: 'NW',
+                    gust: 12,
+                    rain: 10,
+                    rainDesc: 'mostly dry',
+                    uv: 4
+                },
+                water: {
+                    level: 0.8,
+                    levelTrend: 'stable',
+                    flow: null,
+                    quality: 'Good',
+                    temp: 12
+                },
+                access: {
+                    parking: 'Bowness-on-Windermere car park • 320 spaces • 6 min walk',
+                    launch: 'Public jetty & slipway at Ferry Nab • Good access for all craft',
+                    toilets: 'Public facilities at Bowness Pier • 2 min walk'
+                }
+            },
+            brighton: {
+                id: 'brighton',
+                name: 'Brighton Marina',
+                subtitle: 'East Sussex, United Kingdom',
+                lat: 50.812,
+                lng: -0.102,
+                type: 'sea',
+                weather: {
+                    temp: 19,
+                    wind: 18,
+                    windDir: 'SE',
+                    gust: 25,
+                    rain: 5,
+                    rainDesc: 'clear',
+                    uv: 5
+                },
+                water: {
+                    level: null,
+                    levelTrend: null,
+                    flow: null,
+                    quality: 'Good',
+                    temp: 16,
+                    tide: 'High tide 4.2m at 14:32'
+                },
+                access: {
+                    parking: 'Brighton Marina car park • 450 spaces • 2 min walk to slipway',
+                    launch: 'Public slipway inside marina • Protected water • All tide access',
+                    toilets: 'Marina facilities • Open daily • 1 min walk'
+                }
+            },
+            henley: {
+                id: 'henley',
+                name: 'Henley-on-Thames',
+                subtitle: 'Oxfordshire, United Kingdom',
+                lat: 51.538,
+                lng: -0.905,
+                type: 'river',
+                weather: {
+                    temp: 18,
+                    wind: 11,
+                    windDir: 'W',
+                    gust: 17,
+                    rain: 25,
+                    rainDesc: 'isolated showers',
+                    uv: 4
+                },
+                water: {
+                    level: 2.4,
+                    levelTrend: 'falling slowly',
+                    flow: 48,
+                    quality: 'Good',
+                    temp: 14
+                },
+                access: {
+                    parking: 'Henley Bridge car park • 95 spaces • 5 min walk',
+                    launch: 'Public slipway downstream of bridge • Good for SUP & kayaks',
+                    toilets: 'Riverside public toilets • 4 min walk'
+                }
+            }
+        };
+        
+        let currentLocationKey = 'richmond';
+        let map = null;
+        let marker = null;
+        
+        // Initialize Leaflet map
+        function initMap(lat, lng) {
+            if (map) {
+                map.remove();
+            }
+            
+            map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([lat, lng], 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                className: 'map-tiles'
+            }).addTo(map);
+            
+            // Custom marker
+            const icon = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="background:#0F172A; width:18px; height:18px; border-radius:9999px; border:3px solid white; box-shadow:0 2px 4px rgba(0,0,0,0.2);"></div>`,
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            
+            marker = L.marker([lat, lng], { icon: icon }).addTo(map);
+            marker.bindPopup(`<b>Launch point</b><br>Current location`).openPopup();
+            
+            // Add subtle circle for area
+            L.circle([lat, lng], {
+                color: '#0F172A',
+                fillColor: '#0F172A',
+                fillOpacity: 0.08,
+                radius: 650,
+                weight: 1.5
+            }).addTo(map);
+        }
+        
+        // Update all UI with current location data
+        function updateUI(key) {
+            const data = locationsData[key];
+            if (!data) return;
+            
+            currentLocationKey = key;
+            
+            // Header location
+            document.getElementById('header-location').textContent = data.name;
+            
+            // Main location name
+            document.getElementById('location-name').textContent = data.name;
+            document.getElementById('location-subtitle').textContent = data.subtitle;
+            
+            // Updated time
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('updated-time').textContent = `Updated ${timeStr}`;
+            
+            // WEATHER
+            document.getElementById('weather-temp').textContent = data.weather.temp;
+            document.getElementById('weather-wind').textContent = data.weather.wind;
+            document.getElementById('weather-wind-dir').textContent = data.weather.windDir;
+            document.getElementById('weather-gust').textContent = data.weather.gust;
+            document.getElementById('weather-rain').textContent = data.weather.rain;
+            document.getElementById('weather-rain-desc').textContent = data.weather.rainDesc;
+            document.getElementById('weather-uv').textContent = data.weather.uv;
+            
+            // WATER
+            if (data.water.level !== null) {
+                document.getElementById('water-level').textContent = data.water.level;
+                document.getElementById('water-level-trend').textContent = data.water.levelTrend;
+                document.getElementById('water-level-trend').style.display = 'inline-block';
+            } else {
+                document.getElementById('water-level').textContent = '—';
+                document.getElementById('water-level-trend').style.display = 'none';
+            }
+            
+            if (data.water.flow !== null) {
+                document.getElementById('water-flow').textContent = data.water.flow;
+                document.getElementById('water-flow').parentElement.style.display = 'block';
+            } else {
+                document.getElementById('water-flow').parentElement.style.display = 'none';
+            }
+            
+            document.getElementById('water-quality').textContent = data.water.quality;
+            document.getElementById('water-temp').textContent = data.water.temp;
+            
+            // Special handling for sea (tide)
+            const waterSection = document.getElementById('water-section');
+            let tideEl = document.getElementById('water-tide-row');
+            
+            if (data.type === 'sea' && data.water.tide) {
+                if (!tideEl) {
+                    tideEl = document.createElement('div');
+                    tideEl.id = 'water-tide-row';
+                    tideEl.className = 'info-row flex items-baseline justify-between';
+                    tideEl.innerHTML = `
+                        <div class="flex items-center gap-x-3">
+                            <span class="text-blue-600">🌊</span>
+                            <span class="metric-label">Tide</span>
+                        </div>
+                        <div class="text-right">
+                            <span id="water-tide" class="text-xl font-semibold"></span>
+                        </div>
+                    `;
+                    waterSection.querySelector('.bg-white').appendChild(tideEl);
+                }
+                document.getElementById('water-tide').textContent = data.water.tide;
+                tideEl.style.display = 'flex';
+            } else if (tideEl) {
+                tideEl.style.display = 'none';
+            }
+            
+            // ACCESS
+            document.getElementById('access-parking').textContent = data.access.parking;
+            document.getElementById('access-launch').textContent = data.access.launch;
+            document.getElementById('access-toilets').textContent = data.access.toilets;
+            
+            // Update map
+            if (map && marker) {
+                map.setView([data.lat, data.lng], 13);
+                marker.setLatLng([data.lat, data.lng]);
+                marker.getPopup().setContent(`<b>Launch point</b><br>${data.name}`);
+            } else {
+                initMap(data.lat, data.lng);
+            }
+        }
+        
+        // Open search modal
+        function openSearchModal() {
+            const modal = document.getElementById('search-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Focus search input
+            setTimeout(() => {
+                const input = document.getElementById('search-input');
+                input.focus();
+                input.select();
+            }, 150);
+            
+            // Populate spots
+            renderSpotList('');
+        }
+        
+        function closeSearchModal() {
+            const modal = document.getElementById('search-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+            document.getElementById('search-input').value = '';
+        }
+        
+        // Render spot list in modal
+        function renderSpotList(filter = '') {
+            const container = document.getElementById('spot-list');
+            container.innerHTML = '';
+            
+            const filterLower = filter.toLowerCase();
+            
+            Object.keys(locationsData).forEach(key => {
+                const spot = locationsData[key];
+                
+                if (filter && 
+                    !spot.name.toLowerCase().includes(filterLower) && 
+                    !spot.subtitle.toLowerCase().includes(filterLower)) {
+                    return;
+                }
+                
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between px-4 py-[13px] rounded-2xl cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors ${currentLocationKey === key ? 'bg-gray-100' : ''}`;
+                
+                let typeLabel = '';
+                if (spot.type === 'river') typeLabel = 'River';
+                else if (spot.type === 'lake') typeLabel = 'Lake';
+                else if (spot.type === 'sea') typeLabel = 'Coastal';
+                
+                div.innerHTML = `
+                    <div>
+                        <div class="font-semibold text-[15px]">${spot.name}</div>
+                        <div class="text-xs text-gray-500">${spot.subtitle} • ${typeLabel}</div>
+                    </div>
+                    <div class="text-gray-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </div>
+                `;
+                
+                div.onclick = () => {
+                    closeSearchModal();
+                    updateUI(key);
+                };
+                
+                container.appendChild(div);
+            });
+            
+            if (container.children.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'px-4 py-8 text-center text-sm text-gray-400';
+                empty.textContent = 'No locations found';
+                container.appendChild(empty);
+            }
+        }
+        
+        // Filter spots while typing
+        function filterSpots() {
+            const filter = document.getElementById('search-input').value;
+            renderSpotList(filter);
+        }
+        
+        // Use my location (simulated)
+        function useMyLocation() {
+            // Pick a sensible "near me" location 
+            const keys = Object.keys(locationsData);
+            const randomKey = keys[Math.floor(Math.random() * keys.length)];
+            
+            // Show brief loading state
+            const headerLoc = document.getElementById('header-location');
+            const oldText = headerLoc.textContent;
+            headerLoc.textContent = 'Locating...';
+            
+            setTimeout(() => {
+                updateUI(randomKey);
+                
+                // Toast
+                showToast('Location updated to your area');
+            }, 650);
+        }
+        
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#111827] text-white text-sm px-5 py-3 rounded-3xl shadow-lg flex items-center gap-x-2 z-[70]`;
+            toast.innerHTML = `
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.transition = 'all 0.2s ease';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.parentNode.removeChild(toast), 200);
+            }, 2200);
+        }
+        
+        // Refresh data (simulated)
+        function refreshData() {
+            const data = locationsData[currentLocationKey];
+            if (!data) return;
+            
+            // Slight random variation to feel live
+            data.weather.temp = Math.max(12, Math.min(22, data.weather.temp + (Math.random() > 0.5 ? 1 : -1)));
+            data.weather.wind = Math.max(5, Math.min(25, data.weather.wind + (Math.random() > 0.6 ? 2 : -1)));
+            
+            updateUI(currentLocationKey);
+            
+            // Show toast
+            showToast('Data refreshed');
+        }
+        
+        // Keyboard support
+        function setupKeyboard() {
+            document.addEventListener('keydown', function(e) {
+                if (e.key === '/' && document.activeElement.tagName === 'BODY') {
+                    e.preventDefault();
+                    openSearchModal();
+                }
+                
+                if (e.key === 'Escape') {
+                    const modal = document.getElementById('search-modal');
+                    if (!modal.classList.contains('hidden')) {
+                        closeSearchModal();
+                    }
+                }
+            });
+            
+            // Allow pressing Enter in search to select first result
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    const firstSpot = document.querySelector('#spot-list > div');
+                    if (firstSpot) firstSpot.click();
+                }
+            });
+        }
+        
+        // Initialize everything
+        function initializeApp() {
+            initTailwind();
+            
+            // Set initial location
+            updateUI('richmond');
+            
+            // Setup keyboard shortcuts
+            setupKeyboard();
+            
+            // Make sure first spot is highlighted if modal opens
+            // Preload map already done in updateUI
+            
+            console.log('%c[PaddleReady V2] Clean, neutral, information-first UI initialized.', 'color:#64748b');
+        }
+        
+        // Boot the app
+        window.onload = initializeApp;
+    </script>
+</body>
+</html>
