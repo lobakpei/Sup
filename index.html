@@ -1,3 +1,4 @@
+<!-- build: 2026-07-08T12:50 UK — Batch 5: Sewage / storm overflow context (neutral advisory + link to sewagemap.co.uk) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -369,6 +370,10 @@
                             <span class="font-semibold text-lg">Parking</span>
                         </div>
                         <p id="access-parking" class="text-[15px] leading-snug text-gray-600 pl-8">Richmond Riverside Car Park • 180 spaces • 4 min walk to launch</p>
+                        <button onclick="loadNearbyAccess()" id="load-access-btn"
+                                class="mt-2 ml-8 text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100">
+                          Load nearby parking &amp; slipways
+                        </button>
                     </div>
                     
                     <!-- Launch Point -->
@@ -395,6 +400,15 @@
                 </div>
                 <div class="px-1 mt-1.5">
                     <span class="data-source">Source: OpenStreetMap</span>
+                </div>
+
+                <!-- Batch 5: Neutral sewage / storm overflow context -->
+                <div class="mt-3 px-1">
+                    <button onclick="showSewageInfo()" 
+                            class="text-xs px-3 py-1.5 rounded-full border border-amber-200 text-amber-700 hover:bg-amber-50 flex items-center gap-x-1.5">
+                        <span>⚠️</span>
+                        <span>Storm overflow data for this area (England)</span>
+                    </button>
                 </div>
             </section>
 
@@ -591,6 +605,465 @@
             }
         };
         
+        /* =====================================================================
+           BATCH 1: V1 Weather Engine ported into V2 shell (strict SOP)
+           - cachedFetch + localStorage (15min freshness)
+           - Open-Meteo current conditions (no key, CORS ok)
+           - Updates only Weather section DOM
+           - Demo weather in locationsData kept ONLY as fallback
+           - No verdict, no other changes to V2 UI
+           ===================================================================== */
+        const WEATHER_CONFIG = {
+          url: (lat, lng) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kmh&timezone=Europe/London&forecast_days=1`,
+          freshMinutes: 15,
+          timeoutMs: 10000
+        };
+
+        let weatherCache = {}; // in-memory + localStorage backed
+
+        function loadWeatherCache() {
+          try {
+            const raw = localStorage.getItem('pr_weather_cache');
+            if (raw) weatherCache = JSON.parse(raw);
+          } catch (_) {}
+        }
+        function saveWeatherCache() {
+          try { localStorage.setItem('pr_weather_cache', JSON.stringify(weatherCache)); } catch (_) {}
+        }
+
+        function degToCardinal(deg) {
+          if (deg == null) return '—';
+          const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+          return dirs[Math.round(((deg % 360) / 22.5)) % 16];
+        }
+
+        async function fetchWeather(lat, lng) {
+          const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+          const cached = weatherCache[key];
+          const freshMs = WEATHER_CONFIG.freshMinutes * 60 * 1000;
+
+          if (cached && (Date.now() - cached.at < freshMs)) {
+            return { ...cached.data, fromCache: true };
+          }
+
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), WEATHER_CONFIG.timeoutMs);
+            const res = await fetch(WEATHER_CONFIG.url(lat, lng), { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+
+            const json = await res.json();
+            const c = json.current || {};
+
+            const data = {
+              temp: Math.round(c.temperature_2m ?? 0),
+              wind: Math.round(c.wind_speed_10m ?? 0),
+              gust: Math.round(c.wind_gusts_10m ?? 0),
+              windDir: degToCardinal(c.wind_direction_10m),
+              rain: c.precipitation ?? 0,
+              rainDesc: (c.precipitation ?? 0) > 0.2 ? 'light rain recent' : 'mostly dry',
+              uv: 3 // UV not in current endpoint easily; keep simple for Batch 1
+            };
+
+            weatherCache[key] = { data, at: Date.now() };
+            saveWeatherCache();
+            return { ...data, fromCache: false };
+          } catch (e) {
+            console.warn('[Batch1] Weather fetch failed, using cached/demo', e.message);
+            if (cached) return { ...cached.data, fromCache: true, stale: true };
+            return null;
+          }
+        }
+
+        async function applyWeatherToUI(wx) {
+          if (!wx) return;
+          const set = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+          };
+          set('weather-temp', wx.temp);
+          set('weather-wind', wx.wind);
+          set('weather-wind-dir', wx.windDir);
+          set('weather-gust', wx.gust);
+          set('weather-rain', wx.rain);
+          set('weather-rain-desc', wx.rainDesc);
+          // UV kept as demo for Batch 1 (no easy current UV in free endpoint)
+        }
+
+        /* End of Batch 1 weather engine */
+
+        /* =====================================================================
+           BATCH 2: Real search + Check any location (Nominatim)
+           - Free text search anywhere in UK/world
+           - Replaces demo-only spot list with real results
+           - When user selects result → set as current location + fetch weather
+           - Solves "only 4 spots" problem
+           ===================================================================== */
+        let searchDebounceTimer = null;
+
+        async function geocodeNominatim(query) {
+          if (!query || query.length < 2) return [];
+          const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=6&addressdetails=1&countrycodes=gb&extratags=1`;
+          try {
+            const res = await fetch(url, { 
+              headers: { 'User-Agent': 'PaddleReady/1.0 (https://paddleready.example)' } 
+            });
+            if (!res.ok) return [];
+            const results = await res.json();
+            return results.map(r => ({
+              name: r.display_name.split(',')[0],
+              subtitle: r.display_name.split(',').slice(1,3).join(', '),
+              lat: parseFloat(r.lat),
+              lng: parseFloat(r.lon),
+              type: r.type || 'place',
+              source: 'nominatim'
+            }));
+          } catch (e) {
+            console.warn('Nominatim search failed', e);
+            return [];
+          }
+        }
+
+        async function handleSearchInput() {
+          clearTimeout(searchDebounceTimer);
+          const input = document.getElementById('search-input');
+          const query = input.value.trim();
+          
+          const container = document.getElementById('spot-list');
+          container.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400">Searching...</div>';
+
+          searchDebounceTimer = setTimeout(async () => {
+            let results = [];
+            
+            // Always show demo suggestions first if query short
+            if (query.length < 3) {
+              results = Object.keys(locationsData).map(k => {
+                const s = locationsData[k];
+                return { ...s, id: k, source: 'demo' };
+              });
+            } else {
+              // Real Nominatim results
+              const real = await geocodeNominatim(query);
+              results = real;
+            }
+
+            renderSearchResults(results, query);
+          }, 280);
+        }
+
+        function renderSearchResults(results, query = '') {
+          const container = document.getElementById('spot-list');
+          container.innerHTML = '';
+
+          if (!results.length) {
+            const empty = document.createElement('div');
+            empty.className = 'px-4 py-8 text-center text-sm text-gray-400';
+            empty.textContent = query.length > 2 ? 'No results found. Try a different name or postcode.' : 'Type to search anywhere in the UK';
+            container.appendChild(empty);
+            return;
+          }
+
+          results.forEach((spot, idx) => {
+            const div = document.createElement('div');
+            div.className = `flex items-center justify-between px-4 py-[13px] rounded-2xl cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors ${currentLocationKey === spot.id ? 'bg-gray-100' : ''}`;
+            
+            let typeLabel = spot.source === 'demo' ? (spot.type === 'river' ? 'River' : spot.type === 'lake' ? 'Lake' : 'Coastal') : 'Place';
+            
+            div.innerHTML = `
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold text-[15px] truncate">${spot.name}</div>
+                <div class="text-xs text-gray-500 truncate">${spot.subtitle || ''} • ${typeLabel}</div>
+              </div>
+              <div class="text-gray-300 ml-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            `;
+            
+            div.onclick = () => {
+              closeSearchModal();
+              if (spot.source === 'demo') {
+                updateUI(spot.id);
+              } else {
+                // Real location from Nominatim — treat as ad-hoc current location
+                selectAdhocLocation(spot);
+              }
+            };
+            
+            container.appendChild(div);
+          });
+        }
+
+        function selectAdhocLocation(spot) {
+          // Create temporary current location from search result
+          currentLocationKey = 'adhoc-' + Date.now();
+          
+          // Update header and name
+          document.getElementById('header-location').textContent = spot.name;
+          document.getElementById('location-name').textContent = spot.name;
+          document.getElementById('location-subtitle').textContent = spot.subtitle || 'United Kingdom';
+          
+          // Update time
+          const now = new Date();
+          document.getElementById('updated-time').textContent = `Updated ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+          
+          // Move map
+          if (map) {
+            map.setView([spot.lat, spot.lng], 13);
+            if (marker) marker.setLatLng([spot.lat, spot.lng]);
+          } else {
+            initMap(spot.lat, spot.lng);
+          }
+          
+          // Fetch real weather + river for this new location (Batch 3)
+          (async () => {
+            const wx = await fetchWeather(spot.lat, spot.lng);
+            if (wx) await applyWeatherToUI(wx);
+            
+            const river = await fetchRiverLevel(spot.lat, spot.lng);
+            applyRiverToUI(river);
+          })();
+          
+          showToast('Showing live data for this location');
+        }
+
+        function filterSpots() {
+          handleSearchInput();
+        }
+        /* End of Batch 2 search engine */
+
+        /* =====================================================================
+           BATCH 3: EA River (neutral info only)
+           - find nearest station within ~10km
+           - show level + typical range context (below/within/above)
+           - No verdict, no color coding
+           - Graceful for lakes/coastal/ad-hoc locations
+           ===================================================================== */
+        const EA_CONFIG = {
+          base: 'https://environment.data.gov.uk/flood-monitoring/',
+          stationSearchKm: 10,
+          freshMinutes: 15
+        };
+
+        let riverCache = {};
+
+        async function findNearestEAStation(lat, lng) {
+          const url = `${EA_CONFIG.base}id/stations?parameter=level&lat=${lat}&long=${lng}&dist=${EA_CONFIG.stationSearchKm}&_limit=20`;
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const data = await res.json();
+            const items = (data.items || []).filter(s => s.stationReference && s.lat != null);
+            if (!items.length) return null;
+
+            // sort by distance
+            items.sort((a, b) => {
+              const da = Math.hypot(a.lat - lat, a.long - lng);
+              const db = Math.hypot(b.lat - lat, b.long - lng);
+              return da - db;
+            });
+            return items[0];
+          } catch (e) {
+            console.warn('EA station search failed', e);
+            return null;
+          }
+        }
+
+        async function fetchRiverLevel(lat, lng) {
+          const key = `river:${lat.toFixed(3)},${lng.toFixed(3)}`;
+          const cached = riverCache[key];
+          if (cached && Date.now() - cached.at < EA_CONFIG.freshMinutes * 60000) {
+            return cached.data;
+          }
+
+          try {
+            const station = await findNearestEAStation(lat, lng);
+            if (!station) return { unavailable: true, reason: 'no_station' };
+
+            const ref = station.stationReference;
+            const [detailRes, readingRes] = await Promise.all([
+              fetch(`${EA_CONFIG.base}id/stations/${encodeURIComponent(ref)}.json`),
+              fetch(`${EA_CONFIG.base}id/stations/${encodeURIComponent(ref)}/readings?latest`)
+            ]);
+
+            const detail = await detailRes.json();
+            const readings = await readingRes.json();
+
+            const latestItems = readings.items || [];
+            const levelReading = latestItems.find(r => /level/.test(r.measure)) || latestItems[0];
+
+            const value = levelReading ? parseFloat(levelReading.value) : null;
+            const scale = detail.items?.stageScale || {};
+            const typicalLow = scale.typicalRangeLow ?? null;
+            const typicalHigh = scale.typicalRangeHigh ?? null;
+
+            let context = 'no typical range';
+            if (typicalLow != null && typicalHigh != null && value != null) {
+              if (value < typicalLow) context = 'below typical range';
+              else if (value > typicalHigh) context = 'above typical range';
+              else context = 'within typical range';
+            }
+
+            const data = {
+              unavailable: value == null,
+              valueM: value,
+              stationLabel: station.label || ref,
+              typicalLow,
+              typicalHigh,
+              context
+            };
+
+            riverCache[key] = { data, at: Date.now() };
+            return data;
+          } catch (e) {
+            console.warn('EA river fetch failed', e);
+            return { unavailable: true, reason: 'error' };
+          }
+        }
+
+        function applyRiverToUI(river) {
+          const levelEl = document.getElementById('water-level');
+          const trendEl = document.getElementById('water-level-trend');
+          const flowEl = document.getElementById('water-flow');
+
+          if (!river || river.unavailable) {
+            if (levelEl) levelEl.textContent = '—';
+            if (trendEl) {
+              trendEl.textContent = 'River data not available for this location';
+              trendEl.style.display = 'inline-block';
+            }
+            if (flowEl && flowEl.parentElement) flowEl.parentElement.style.display = 'none';
+            return;
+          }
+
+          if (levelEl) levelEl.textContent = river.valueM != null ? river.valueM.toFixed(1) : '—';
+
+          if (trendEl) {
+            let label = river.context || '';
+            if (river.typicalLow != null && river.typicalHigh != null) {
+              label += ` (${river.typicalLow.toFixed(1)}–${river.typicalHigh.toFixed(1)} m)`;
+            }
+            trendEl.textContent = label;
+            trendEl.style.display = 'inline-block';
+          }
+
+          // Flow kept as demo for Batch 3
+          if (flowEl && flowEl.parentElement) flowEl.parentElement.style.display = 'block';
+        }
+        /* End of Batch 3 EA river engine */
+
+        /* =====================================================================
+           BATCH 4: Access layer — Overpass parking + slipway (on-demand)
+           - Fetch nearby parking (amenity=parking) and slipways (leisure=slipway)
+           - Cached per location
+           - Button in Access section to load real data
+           - Minimal UI impact on clean V2 look
+           ===================================================================== */
+        const OVERPASS_URLS = [
+          'https://overpass-api.de/api/interpreter',
+          'https://overpass.kumi.systems/api/interpreter'
+        ];
+
+        let accessCache = {};
+
+        async function fetchAccessData(lat, lng) {
+          const key = `access:${lat.toFixed(3)},${lng.toFixed(3)}`;
+          if (accessCache[key] && Date.now() - accessCache[key].at < 30 * 60000) {
+            return accessCache[key].data;
+          }
+
+          const query = `
+            [out:json][timeout:20];
+            (
+              node["amenity"="parking"](around:1200,${lat},${lng});
+              way["amenity"="parking"](around:1200,${lat},${lng});
+              node["leisure"="slipway"](around:1200,${lat},${lng});
+            );
+            out center tags;
+          `;
+
+          for (const baseUrl of OVERPASS_URLS) {
+            try {
+              const res = await fetch(baseUrl, {
+                method: 'POST',
+                body: query,
+                headers: { 'Content-Type': 'text/plain' }
+              });
+              if (!res.ok) continue;
+
+              const json = await res.json();
+              const elements = json.elements || [];
+
+              const parking = elements
+                .filter(e => e.tags && e.tags.amenity === 'parking')
+                .slice(0, 5)
+                .map(e => ({
+                  name: e.tags.name || 'Unnamed car park',
+                  lat: e.lat || (e.center && e.center.lat),
+                  lng: e.lon || (e.center && e.center.lon),
+                  fee: e.tags.fee || 'unknown'
+                }));
+
+              const slipways = elements
+                .filter(e => e.tags && e.tags.leisure === 'slipway')
+                .slice(0, 3)
+                .map(e => ({
+                  name: e.tags.name || 'Slipway',
+                  lat: e.lat || (e.center && e.center.lat)
+                }));
+
+              const data = { parking, slipways, fetchedAt: Date.now() };
+              accessCache[key] = { data, at: Date.now() };
+              return data;
+            } catch (e) {
+              console.warn('Overpass failed on', baseUrl, e.message);
+            }
+          }
+          return { parking: [], slipways: [], error: true };
+        }
+
+        function renderAccessData(data) {
+          const container = document.getElementById('access-parking');
+          if (!container) return;
+
+          if (data.error || (!data.parking.length && !data.slipways.length)) {
+            container.innerHTML = 'No detailed parking data found nearby. Check Google Maps or local signs.';
+            return;
+          }
+
+          let html = '<div class="text-sm space-y-1 mt-1">';
+          if (data.parking.length) {
+            html += '<div class="font-medium text-gray-700">Nearby parking:</div>';
+            data.parking.forEach(p => {
+              const fee = p.fee === 'yes' ? ' (paid)' : p.fee === 'no' ? ' (free)' : '';
+              html += `<div class="text-gray-600">• ${p.name}${fee}</div>`;
+            });
+          }
+          if (data.slipways.length) {
+            html += '<div class="font-medium text-gray-700 mt-2">Slipways nearby:</div>';
+            data.slipways.forEach(s => {
+              html += `<div class="text-gray-600">• ${s.name}</div>`;
+            });
+          }
+          html += '</div>';
+          container.innerHTML = html;
+        }
+
+        // Add a small button to trigger loading (called from UI)
+        async function loadNearbyAccess() {
+          const data = locationsData[currentLocationKey] || { lat: 51.461, lng: -0.305 }; // fallback
+          const btn = document.getElementById('load-access-btn');
+          if (btn) btn.textContent = 'Loading...';
+
+          const access = await fetchAccessData(data.lat, data.lng);
+          renderAccessData(access);
+
+          if (btn) btn.textContent = 'Refresh parking data';
+        }
+        /* End of Batch 4 Overpass engine */
+        
         let currentLocationKey = 'richmond';
         let map = null;
         let marker = null;
@@ -650,34 +1123,39 @@
             const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
             document.getElementById('updated-time').textContent = `Updated ${timeStr}`;
             
-            // WEATHER
-            document.getElementById('weather-temp').textContent = data.weather.temp;
-            document.getElementById('weather-wind').textContent = data.weather.wind;
-            document.getElementById('weather-wind-dir').textContent = data.weather.windDir;
-            document.getElementById('weather-gust').textContent = data.weather.gust;
-            document.getElementById('weather-rain').textContent = data.weather.rain;
-            document.getElementById('weather-rain-desc').textContent = data.weather.rainDesc;
-            document.getElementById('weather-uv').textContent = data.weather.uv;
+            // WEATHER — Batch 1: fetch real Open-Meteo (demo values only as fallback)
+            (async () => {
+              if (data.lat && data.lng) {
+                const wx = await fetchWeather(data.lat, data.lng);
+                if (wx) {
+                  await applyWeatherToUI(wx);
+                } else {
+                  // fallback to demo if fetch completely fails
+                  if (data.weather) {
+                    const d = data.weather;
+                    document.getElementById('weather-temp').textContent = d.temp;
+                    document.getElementById('weather-wind').textContent = d.wind;
+                    document.getElementById('weather-wind-dir').textContent = d.windDir;
+                    document.getElementById('weather-gust').textContent = d.gust;
+                    document.getElementById('weather-rain').textContent = d.rain;
+                    document.getElementById('weather-rain-desc').textContent = d.rainDesc;
+                    document.getElementById('weather-uv').textContent = d.uv;
+                  }
+                }
+              }
+            })();
             
-            // WATER
-            if (data.water.level !== null) {
-                document.getElementById('water-level').textContent = data.water.level;
-                document.getElementById('water-level-trend').textContent = data.water.levelTrend;
-                document.getElementById('water-level-trend').style.display = 'inline-block';
-            } else {
-                document.getElementById('water-level').textContent = '—';
-                document.getElementById('water-level-trend').style.display = 'none';
-            }
-            
-            if (data.water.flow !== null) {
-                document.getElementById('water-flow').textContent = data.water.flow;
-                document.getElementById('water-flow').parentElement.style.display = 'block';
-            } else {
-                document.getElementById('water-flow').parentElement.style.display = 'none';
-            }
-            
-            document.getElementById('water-quality').textContent = data.water.quality;
-            document.getElementById('water-temp').textContent = data.water.temp;
+            // WATER — Batch 3: River level from EA (neutral typical range)
+            (async () => {
+              if (data.lat && data.lng) {
+                const river = await fetchRiverLevel(data.lat, data.lng);
+                applyRiverToUI(river);
+              }
+            })();
+
+            // Keep Water Quality + Temp as demo for now (Batch 3 focus on river level)
+            document.getElementById('water-quality').textContent = data.water ? data.water.quality : 'Good';
+            document.getElementById('water-temp').textContent = data.water ? data.water.temp : '13';
             
             // Special handling for sea (tide)
             const waterSection = document.getElementById('water-section');
@@ -733,8 +1211,12 @@
                 input.select();
             }, 150);
             
-            // Populate spots
-            renderSpotList('');
+            // Populate with demo suggestions initially (real search on typing)
+            const demoResults = Object.keys(locationsData).map(k => {
+              const s = locationsData[k];
+              return { ...s, id: k, source: 'demo' };
+            });
+            renderSearchResults(demoResults, '');
         }
         
         function closeSearchModal() {
@@ -841,14 +1323,23 @@
             const data = locationsData[currentLocationKey];
             if (!data) return;
             
-            // Slight random variation to feel live
-            data.weather.temp = Math.max(12, Math.min(22, data.weather.temp + (Math.random() > 0.5 ? 1 : -1)));
-            data.weather.wind = Math.max(5, Math.min(25, data.weather.wind + (Math.random() > 0.6 ? 2 : -1)));
-            
-            updateUI(currentLocationKey);
-            
-            // Show toast
-            showToast('Data refreshed');
+            // Batch 1: trigger real weather re-fetch for current location
+            (async () => {
+              if (data.lat && data.lng) {
+                // clear short cache to force refresh
+                const key = `${data.lat.toFixed(3)},${data.lng.toFixed(3)}`;
+                delete weatherCache[key];
+                saveWeatherCache();
+                
+                const wx = await fetchWeather(data.lat, data.lng);
+                if (wx) {
+                  await applyWeatherToUI(wx);
+                  showToast('Weather updated from Open-Meteo');
+                } else {
+                  showToast('Using cached weather (offline)');
+                }
+              }
+            })();
         }
         
         // Keyboard support
@@ -876,12 +1367,36 @@
                 }
             });
         }
+
+        // Batch 5: Neutral sewage context
+        function showSewageInfo() {
+          const data = locationsData[currentLocationKey] || {};
+          const lat = data.lat || 51.46;
+          const lng = data.lng || -0.30;
+          
+          // Open sewagemap.co.uk (best current public source for England storm overflow downstream impact)
+          // We do not attempt client-side polygon check because the live GeoJSON hosting is not stably published for third-party apps.
+          const url = `https://www.sewagemap.co.uk/?lat=${lat}&lng=${lng}&zoom=11`;
+          window.open(url, '_blank');
+          
+          // Small toast explaining the data
+          const toast = document.createElement('div');
+          toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#111827] text-white text-xs px-4 py-2 rounded-3xl shadow max-w-[280px] text-center z-[70]`;
+          toast.innerHTML = `Opened live storm overflow map.<br><span class="opacity-70">Data from water company EDMs • Check conditions yourself.</span>`;
+          document.body.appendChild(toast);
+          setTimeout(() => {
+            toast.style.transition = 'all .2s';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 200);
+          }, 2800);
+        }
         
         // Initialize everything
         function initializeApp() {
             initTailwind();
+            loadWeatherCache();
             
-            // Set initial location
+            // Set initial location (will trigger real weather fetch via updateUI)
             updateUI('richmond');
             
             // Setup keyboard shortcuts
@@ -890,7 +1405,7 @@
             // Make sure first spot is highlighted if modal opens
             // Preload map already done in updateUI
             
-            console.log('%c[PaddleReady V2] Clean, neutral, information-first UI initialized.', 'color:#64748b');
+            console.log('%c[PaddleReady Batch 1] V2 shell + real Open-Meteo weather engine ready.', 'color:#166534');
         }
         
         // Boot the app
